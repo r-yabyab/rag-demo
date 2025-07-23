@@ -1,4 +1,3 @@
-pip install llama-index pypdf sentence-transformers faiss-cpu
+pip install llama-index pypdf sentence-transformers
 pip install llama-index-embeddings-huggingface
-pip install llama-index-vector-stores-faiss
-    #https://docs.llamaindex.ai/en/stable/examples/vector_stores/FaissIndexDemo/
+pip install llama-index-vector-stores-chroma
