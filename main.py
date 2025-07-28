@@ -1,4 +1,3 @@
-# inference.py
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import VectorStoreIndex
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -10,8 +9,8 @@ import chromadb
 embed_model = HuggingFaceEmbedding()
 
 # Step 2: Load vector store from disk
-db = chromadb.PersistentClient(path="./vectors/chroma_db_indexed")
-chroma_collection = db.get_or_create_collection(name="my_collection")
+db = chromadb.PersistentClient(path="./vectors/chroma_db_indexed-smallerchunk")
+chroma_collection = db.get_or_create_collection(name="my_collection-smallerchunk")
 vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 
 # Step 3: Load index from vector store
