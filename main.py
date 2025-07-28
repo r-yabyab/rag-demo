@@ -15,7 +15,7 @@ from llama_index.core import VectorStoreIndex
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core import StorageContext
 
-db = chromadb.PersistentClient(path="./chroma_db")
+db = chromadb.PersistentClient(path="./vectors/chroma_db_indexed")
 chroma_collection = db.get_or_create_collection(name="my_collection")
 
 vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
@@ -28,7 +28,7 @@ index = VectorStoreIndex.from_documents(
 )
 
 # Step 4: Load embedding from disk
-db2 = chromadb.PersistentClient(path="./chroma_db")
+db2 = chromadb.PersistentClient(path=".vectors/chroma_db_indexed")
 chroma_collection = db2.get_or_create_collection(name="my_collection")
 vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 index = VectorStoreIndex.from_vector_store(
@@ -44,7 +44,10 @@ print(llm)
 # Step 6: Query
 
 
-query_engine = index.as_query_engine(llm=llm)
+query_engine = index.as_query_engine(
+    llm=llm,
+    similarity_top_k=3,
+)
 # response = query_engine.query("What are the skills listed for this person?")
 # print(response)
 
