@@ -1,3 +1,4 @@
+from config import VECTOR_DB_PATH, COLLECTION_NAME
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import VectorStoreIndex
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -10,8 +11,8 @@ import chromadb
 embed_model = HuggingFaceEmbedding()
 
 # Step 2: Load vector store from disk
-db = chromadb.PersistentClient(path="./vectors/chroma_db_indexed-smallerchunk")
-chroma_collection = db.get_or_create_collection(name="my_collection-smallerchunk")
+db = chromadb.PersistentClient(path=VECTOR_DB_PATH)
+chroma_collection = db.get_or_create_collection(name=COLLECTION_NAME)
 vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 
 # Step 3: Load index from vector store
@@ -30,10 +31,10 @@ llm = Ollama(
 # Step 5: Create query engine and run chat
 query_engine = index.as_query_engine(
     llm=llm, 
-    similarity_top_k=4,
-    node_postprocessors=[
-        SimilarityPostprocessor(similarity_cutoff=0.3)  # optional filter
-    ]
+    similarity_top_k=5,
+    # node_postprocessors=[
+    #     SimilarityPostprocessor(similarity_cutoff=0.3)
+    # ]
 )
 
 print("\nType your question (or type 'exit' to quit):")
