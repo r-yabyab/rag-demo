@@ -3,6 +3,7 @@ from llama_index.core import VectorStoreIndex
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core import StorageContext
 from llama_index.llms.ollama import Ollama
+from llama_index.core.postprocessor import SimilarityPostprocessor
 import chromadb
 
 # Step 1: Load embedding model (must match one used in build step)
@@ -20,12 +21,19 @@ index = VectorStoreIndex.from_vector_store(
 )
 
 # Step 4: Load LLM
-llm = Ollama(model="gemma:2b", request_timeout=400)
+llm = Ollama(
+    model="gemma:2b", 
+    # temperature=0.3, 
+    request_timeout=400,
+)
 
 # Step 5: Create query engine and run chat
 query_engine = index.as_query_engine(
     llm=llm, 
-    similarity_top_k=4
+    similarity_top_k=4,
+    node_postprocessors=[
+        SimilarityPostprocessor(similarity_cutoff=0.3)  # optional filter
+    ]
 )
 
 print("\nType your question (or type 'exit' to quit):")
