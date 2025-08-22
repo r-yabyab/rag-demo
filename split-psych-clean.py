@@ -245,28 +245,25 @@ def build_vectordb_with_metadata():
 
 def save_metadata_summary(documents, output_file="psychology_metadata.jsonl"):
     """
-    Save extracted metadata to JSONL file for inspection (one entry per unique PDF)
+    Save extracted metadata to JSONL file for inspection - one entry per unique PDF
     """
     print(f"\nSaving metadata to {output_file}...")
     
-    # Group documents by source file to avoid duplicates
-    unique_docs = {}
+    # Group by source (PDF filename) to get unique papers
+    unique_papers = {}
     for doc in documents:
         source = doc.metadata.get('source', 'Unknown')
-        if source not in unique_docs:
-            unique_docs[source] = doc
+        if source not in unique_papers:
+            unique_papers[source] = {
+                'source': source,
+                'year': doc.metadata.get('year', None),
+                'title': doc.metadata.get('title', None),
+                'authors': doc.metadata.get('authors', None),
+                'journal': doc.metadata.get('journal', None)
+            }
     
-    metadata_list = []
-    for doc in unique_docs.values():
-        metadata_entry = {
-            'source': doc.metadata.get('source', 'Unknown'),
-            'year': doc.metadata.get('year', None),
-            'title': doc.metadata.get('title', None),
-            'authors': doc.metadata.get('authors', None),
-            'journal': doc.metadata.get('journal', None),
-            'text_preview': doc.text[:200] + "..." if len(doc.text) > 200 else doc.text
-        }
-        metadata_list.append(metadata_entry)
+    # Convert to list for consistent processing
+    metadata_list = list(unique_papers.values())
     
     with open(output_file, 'w', encoding='utf-8') as f:
         for entry in metadata_list:
@@ -277,12 +274,11 @@ def save_metadata_summary(documents, output_file="psychology_metadata.jsonl"):
     authors_found = [entry['authors'] for entry in metadata_list if entry['authors']]
     journals_found = [entry['journal'] for entry in metadata_list if entry['journal']]
     
-    print(f"✅ Metadata saved for {len(metadata_list)} unique PDF files")
-    print(f"✅ Total document chunks created: {len(documents)}")
-    print(f"Years extracted from {len(years_found)} documents")
-    print(f"Titles extracted from {len(titles_found)} documents")
-    print(f"Authors extracted from {len(authors_found)} documents")
-    print(f"Journals extracted from {len(journals_found)} documents")
+    print(f"✅ Metadata saved for {len(metadata_list)} unique papers")
+    print(f"Years extracted from {len(years_found)} papers")
+    print(f"Titles extracted from {len(titles_found)} papers")
+    print(f"Authors extracted from {len(authors_found)} papers")
+    print(f"Journals extracted from {len(journals_found)} papers")
     
     if years_found:
         unique_years = sorted(set(years_found))

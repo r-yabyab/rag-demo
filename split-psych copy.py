@@ -39,68 +39,119 @@ def extract_year_from_text(text):
 
 def extract_title_from_text(text):
     """
-    Extract paper title using PDF metadata and simple text patterns
+    Extract paper title from the first page text
     """
-    # Strategy: Join all words and look for patterns after indicators
-    clean_text = ' '.join(text.split())
+    lines = text.split('\n')
     
-    # Look for patterns after "Short communication" or "Research report"
-    patterns = [
-        r'Short communication\s+(.+?)(?:\s+[A-Z][a-z]+\s+[A-Z][a-z]+(?:,|\s+[a-z])|Abstract|Department)',
-        r'Research report\s+(.+?)(?:\s+[A-Z][a-z]+\s+[A-Z][a-z]+(?:,|\s+[a-z])|Abstract|Department)',
-        r'Brief report\s+(.+?)(?:\s+[A-Z][a-z]+\s+[A-Z][a-z]+(?:,|\s+[a-z])|Abstract|Department)',
-        r'Review article\s+(.+?)(?:\s+[A-Z][a-z]+\s+[A-Z][a-z]+(?:,|\s+[a-z])|Abstract|Department)',
+    # Skip headers, footers, and common metadata lines
+    skip_patterns = [
+        r'^(contents|available online|published by|elsevier|doi:|http|www\.)',
+        r'^\d+$',  # page numbers
+        r'^[A-Z\s]{2,}$',  # ALL CAPS headers
+        r'(journal|volume|issue|page|\d{4}.*elsevier)',
+        r'^(research paper|review|article|correspondence)',
+        r'^(received|accepted|available|published)',
     ]
     
-    for pattern in patterns:
-        match = re.search(pattern, clean_text, re.IGNORECASE)
-        if match:
-            title = match.group(1).strip()
-            # Clean up the title
-            title = re.sub(r'\s+', ' ', title)
-            if 10 < len(title) < 300:
-                return title
+    potential_titles = []
+    
+    for i, line in enumerate(lines[:20]):  # Check first 20 lines
+        line = line.strip()
+        
+        # Skip empty lines and very short lines
+        if len(line) < 10:
+            continue
+            
+        # Skip lines matching skip patterns
+        if any(re.search(pattern, line, re.IGNORECASE) for pattern in skip_patterns):
+            continue
+        
+        # Look for title characteristics
+        if (len(line) > 20 and 
+            not line.isupper() and 
+            not line.lower().startswith(('abstract', 'keywords', 'introduction', 'background'))):
+            potential_titles.append((i, line))
+    
+    # Return the first suitable title found
+    if potential_titles:
+        return potential_titles[0][1][:300]  # Limit title length
     
     return None
 
 def extract_authors_from_text(text):
     """
-    Extract authors using simple pattern matching
+    Extract authors from the first page text
     """
-    clean_text = ' '.join(text.split())
+    lines = text.split('\n')
     
-    # Look for author pattern after title - typically names followed by affiliations
-    # Pattern: Title followed by authors (names with possible middle initials)
-    author_pattern = r'(?:Short communication|Research report|Brief report|Review article)\s+[^a-z]*?\s+([A-Z][a-z]+\s+[A-Z]?[a-z]*,?\s*(?:[A-Z][a-z]+\s+[A-Z]?[a-z]*,?\s*)*)\s*[a-z,]*\s*(?:Department|Centre|Institute|University)'
+    # Common patterns for author sections
+    author_indicators = [
+        r'^[A-Z][a-z]+\s+[A-Z]\.',  # LastName F.
+        r'^[A-Z][a-z]+,\s*[A-Z]\.',  # LastName, F.
+        r'[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*[a-z]*',  # Full names
+    ]
     
-    match = re.search(author_pattern, clean_text, re.IGNORECASE)
-    if match:
-        authors = match.group(1).strip()
-        # Clean up authors
-        authors = re.sub(r'[0-9*†‡§¶#]', '', authors)
-        authors = re.sub(r'\s+', ' ', authors).strip()
-        if len(authors) > 5:
-            return authors
+    authors = []
+    in_author_section = False
+    
+    for i, line in enumerate(lines[:30]):  # Check first 30 lines
+        line = line.strip()
+        
+        # Skip very short lines
+        if len(line) < 3:
+            continue
+            
+        # Look for author patterns
+        for pattern in author_indicators:
+            if re.search(pattern, line):
+                # Clean up the author line
+                author_line = re.sub(r'[0-9*†‡§¶#]', '', line)  # Remove superscript numbers/symbols
+                author_line = re.sub(r'\s+', ' ', author_line).strip()
+                
+                if len(author_line) > 2 and len(author_line) < 200:
+                    authors.append(author_line)
+                    in_author_section = True
+                break
+        
+        # If we found authors and hit a line that doesn't look like authors, stop
+        if in_author_section and not any(re.search(pattern, line) for pattern in author_indicators):
+            if not re.search(r'[a-z]', line):  # If line has no lowercase (likely not authors)
+                break
+    
+    # Join authors if multiple lines found
+    if authors:
+        return '; '.join(authors[:5])  # Limit to first 5 author entries
     
     return None
 
 def extract_journal_from_text(text):
     """
-    Extract journal name - simplified
+    Extract journal name from the text
     """
-    if 'behavioural brain research' in text.lower():
-        return 'Behavioural Brain Research'
+    lines = text.split('\n')
     
-    # Look for other journal patterns
+    # Common journal patterns
     journal_patterns = [
-        r'(Journal of [A-Z][a-z\s]+)',
-        r'([A-Z][a-z]+\s+(?:Research|Science|Psychology|Neuroscience))',
+        r'(Behavioural Brain Research|Brain Research|Neuroscience|Psychology|Journal of)',
+        r'^\s*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*\d+',  # Journal Name + volume
+        r'^\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*(?:Volume|Vol\.)',  # Journal + Volume
     ]
     
-    for pattern in journal_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(1)
+    for line in lines[:15]:  # Check first 15 lines
+        line = line.strip()
+        
+        for pattern in journal_patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                journal = match.group(1) if match.lastindex else match.group(0)
+                # Clean up the journal name
+                journal = re.sub(r'\d+.*$', '', journal).strip()  # Remove volume/page numbers
+                if len(journal) > 5 and len(journal) < 100:
+                    return journal
+    
+    # Fallback: look for "Behavioural Brain Research" specifically since that's in your folder
+    if 'behavioural brain research' in text.lower():
+        return 'Behavioural Brain Research'
     
     return None
 
@@ -118,14 +169,6 @@ def extract_metadata_from_pdf(pdf_path):
     
     try:
         doc = fitz.open(str(pdf_path))
-        
-        # Try to get title from PDF metadata first
-        pdf_metadata = doc.metadata
-        if pdf_metadata and pdf_metadata.get('title'):
-            title = pdf_metadata['title'].strip()
-            if len(title) > 5:
-                metadata['title'] = title[:300]
-        
         if len(doc) > 0:
             first_page = doc[0].get_text()
             
@@ -134,11 +177,10 @@ def extract_metadata_from_pdf(pdf_path):
             if year:
                 metadata['year'] = year
             
-            # Extract title if not found in metadata
-            if not metadata['title']:
-                title = extract_title_from_text(first_page)
-                if title:
-                    metadata['title'] = title
+            # Extract title
+            title = extract_title_from_text(first_page)
+            if title:
+                metadata['title'] = title
             
             # Extract authors
             authors = extract_authors_from_text(first_page)
@@ -201,21 +243,8 @@ def build_vectordb_with_metadata():
     for i, doc in enumerate(documents[:3]):
         print(f"  Doc {i+1}:")
         print(f"    Year: {doc.metadata.get('year', 'N/A')}")
-        
-        title = doc.metadata.get('title', 'N/A')
-        if title and title != 'N/A':
-            title_display = title[:60] + '...' if len(title) > 60 else title
-        else:
-            title_display = 'N/A'
-        print(f"    Title: {title_display}")
-        
-        authors = doc.metadata.get('authors', 'N/A')
-        if authors and authors != 'N/A':
-            authors_display = authors[:50] + '...' if len(authors) > 50 else authors
-        else:
-            authors_display = 'N/A'
-        print(f"    Authors: {authors_display}")
-        
+        print(f"    Title: {doc.metadata.get('title', 'N/A')[:60]}{'...' if doc.metadata.get('title') and len(doc.metadata.get('title', '')) > 60 else ''}")
+        print(f"    Authors: {doc.metadata.get('authors', 'N/A')[:50]}{'...' if doc.metadata.get('authors') and len(doc.metadata.get('authors', '')) > 50 else ''}")
         print(f"    Journal: {doc.metadata.get('journal', 'N/A')}")
         print(f"    Source: {doc.metadata.get('source', 'N/A')}")
         print()
@@ -245,19 +274,12 @@ def build_vectordb_with_metadata():
 
 def save_metadata_summary(documents, output_file="psychology_metadata.jsonl"):
     """
-    Save extracted metadata to JSONL file for inspection (one entry per unique PDF)
+    Save extracted metadata to JSONL file for inspection
     """
     print(f"\nSaving metadata to {output_file}...")
     
-    # Group documents by source file to avoid duplicates
-    unique_docs = {}
-    for doc in documents:
-        source = doc.metadata.get('source', 'Unknown')
-        if source not in unique_docs:
-            unique_docs[source] = doc
-    
     metadata_list = []
-    for doc in unique_docs.values():
+    for doc in documents:
         metadata_entry = {
             'source': doc.metadata.get('source', 'Unknown'),
             'year': doc.metadata.get('year', None),
@@ -277,8 +299,7 @@ def save_metadata_summary(documents, output_file="psychology_metadata.jsonl"):
     authors_found = [entry['authors'] for entry in metadata_list if entry['authors']]
     journals_found = [entry['journal'] for entry in metadata_list if entry['journal']]
     
-    print(f"✅ Metadata saved for {len(metadata_list)} unique PDF files")
-    print(f"✅ Total document chunks created: {len(documents)}")
+    print(f"✅ Metadata saved for {len(metadata_list)} documents")
     print(f"Years extracted from {len(years_found)} documents")
     print(f"Titles extracted from {len(titles_found)} documents")
     print(f"Authors extracted from {len(authors_found)} documents")

@@ -1,5 +1,4 @@
 import json
-import os
 import re
 from pathlib import Path
 from config import VECTOR_DB_PATH, COLLECTION_NAME
@@ -8,7 +7,6 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core import Settings
-from llama_index.core.node_parser import SimpleNodeParser
 import chromadb
 import fitz  # PyMuPDF
 
@@ -170,15 +168,17 @@ def load_documents_with_metadata(input_dir="./data/apa-papers"):
         print(f"Processing: {pdf_path.name}")
         
         try:
+            # Extract metadata from PDF
             metadata = extract_metadata_from_pdf(pdf_path)
-            print(f"  Year: {metadata['year']}")
             print(f"  Title: {metadata['title'][:50] + '...' if metadata['title'] and len(metadata['title']) > 50 else metadata['title']}")
-            print(f"  Authors: {metadata['authors'][:50] + '...' if metadata['authors'] and len(metadata['authors']) > 50 else metadata['authors']}")
+            print(f"  Year: {metadata['year']}")
             print(f"  Journal: {metadata['journal']}")
             
+            # Load document content using SimpleDirectoryReader
             loader = SimpleDirectoryReader(input_files=[str(pdf_path)])
             docs = loader.load_data()
             
+            # Add metadata to each document chunk
             for doc in docs:
                 doc.metadata.update(metadata)
                 documents.append(doc)
@@ -188,47 +188,62 @@ def load_documents_with_metadata(input_dir="./data/apa-papers"):
     
     return documents
 
-def build_vectordb_with_metadata():
+def save_unique_metadata_summary(documents, output_file="psychology_metadata.jsonl"):
     """
-    Build vector database similar to build-vectordb.py but with metadata extraction
+    Save extracted metadata to JSONL file for inspection - one entry per unique PDF
     """
-    print("Starting vector database creation with metadata...")
+    print(f"\nSaving metadata summary to {output_file}...")
     
+    # Group by source (PDF filename) to get unique papers
+    unique_papers = {}
+    for doc in documents:
+        source = doc.metadata.get('source', 'Unknown')
+        if source not in unique_papers:
+            unique_papers[source] = {
+                'source': source,
+                'year': doc.metadata.get('year', None),
+                'title': doc.metadata.get('title', None),
+                'authors': doc.metadata.get('authors', None),
+                'journal': doc.metadata.get('journal', None)
+            }
+    
+    # Convert to list for consistent processing
+    metadata_list = list(unique_papers.values())
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        for entry in metadata_list:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    
+    # Statistics
+    years_found = [entry['year'] for entry in metadata_list if entry['year']]
+    titles_found = [entry['title'] for entry in metadata_list if entry['title']]
+    authors_found = [entry['authors'] for entry in metadata_list if entry['authors']]
+    journals_found = [entry['journal'] for entry in metadata_list if entry['journal']]
+    
+    print(f"✅ Metadata saved for {len(metadata_list)} unique papers")
+    print(f"Titles extracted: {len(titles_found)}/{len(metadata_list)} papers")
+    print(f"Authors extracted: {len(authors_found)}/{len(metadata_list)} papers")
+    print(f"Journals extracted: {len(journals_found)}/{len(metadata_list)} papers")
+
+# Main execution
+if __name__ == "__main__":
+    print("Building vector database with metadata extraction...")
+    
+    # Step 1: Load documents with metadata
     documents = load_documents_with_metadata("./data/apa-papers")
-    print(f"Total documents loaded: {len(documents)}")
+    print(f"\nTotal document chunks loaded: {len(documents)}")
     
-    print("\nMetadata examples:")
-    for i, doc in enumerate(documents[:3]):
-        print(f"  Doc {i+1}:")
-        print(f"    Year: {doc.metadata.get('year', 'N/A')}")
-        
-        title = doc.metadata.get('title', 'N/A')
-        if title and title != 'N/A':
-            title_display = title[:60] + '...' if len(title) > 60 else title
-        else:
-            title_display = 'N/A'
-        print(f"    Title: {title_display}")
-        
-        authors = doc.metadata.get('authors', 'N/A')
-        if authors and authors != 'N/A':
-            authors_display = authors[:50] + '...' if len(authors) > 50 else authors
-        else:
-            authors_display = 'N/A'
-        print(f"    Authors: {authors_display}")
-        
-        print(f"    Journal: {doc.metadata.get('journal', 'N/A')}")
-        print(f"    Source: {doc.metadata.get('source', 'N/A')}")
-        print()
-    
+    # Step 2: Set up embedding model and chunking settings
     embed_model = HuggingFaceEmbedding()
-    
     Settings.chunk_size = 512 
     Settings.chunk_overlap = 50
     
+    # Step 3: Set up persistent ChromaDB vector store
     db = chromadb.PersistentClient(path=VECTOR_DB_PATH)
     chroma_collection = db.get_or_create_collection(name=COLLECTION_NAME)
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     
+    # Step 4: Build and persist index
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     
     index = VectorStoreIndex.from_documents(
@@ -237,70 +252,9 @@ def build_vectordb_with_metadata():
         embed_model=embed_model
     )
     
-    print("Vector database created with metadata!")
+    print("\n✅ Vector database created with metadata!")
     
-    save_metadata_summary(documents)
+    # Step 5: Save metadata summary
+    save_unique_metadata_summary(documents)
     
-    return index
-
-def save_metadata_summary(documents, output_file="psychology_metadata.jsonl"):
-    """
-    Save extracted metadata to JSONL file for inspection (one entry per unique PDF)
-    """
-    print(f"\nSaving metadata to {output_file}...")
-    
-    # Group documents by source file to avoid duplicates
-    unique_docs = {}
-    for doc in documents:
-        source = doc.metadata.get('source', 'Unknown')
-        if source not in unique_docs:
-            unique_docs[source] = doc
-    
-    metadata_list = []
-    for doc in unique_docs.values():
-        metadata_entry = {
-            'source': doc.metadata.get('source', 'Unknown'),
-            'year': doc.metadata.get('year', None),
-            'title': doc.metadata.get('title', None),
-            'authors': doc.metadata.get('authors', None),
-            'journal': doc.metadata.get('journal', None),
-            'text_preview': doc.text[:200] + "..." if len(doc.text) > 200 else doc.text
-        }
-        metadata_list.append(metadata_entry)
-    
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for entry in metadata_list:
-            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-    
-    years_found = [entry['year'] for entry in metadata_list if entry['year']]
-    titles_found = [entry['title'] for entry in metadata_list if entry['title']]
-    authors_found = [entry['authors'] for entry in metadata_list if entry['authors']]
-    journals_found = [entry['journal'] for entry in metadata_list if entry['journal']]
-    
-    print(f"✅ Metadata saved for {len(metadata_list)} unique PDF files")
-    print(f"✅ Total document chunks created: {len(documents)}")
-    print(f"Years extracted from {len(years_found)} documents")
-    print(f"Titles extracted from {len(titles_found)} documents")
-    print(f"Authors extracted from {len(authors_found)} documents")
-    print(f"Journals extracted from {len(journals_found)} documents")
-    
-    if years_found:
-        unique_years = sorted(set(years_found))
-        print(f"Year range: {min(unique_years)} - {max(unique_years)}")
-        print(f"Unique years: {unique_years}")
-    
-    if journals_found:
-        unique_journals = set(journals_found)
-        print(f"Unique journals found: {list(unique_journals)}")
-
-if __name__ == "__main__":
-    print("Testing metadata extraction...")
-    pdf_files = list(Path("./data/apa-papers").glob("**/*.pdf"))
-    if pdf_files:
-        test_pdf = pdf_files[0]
-        print(f"Testing with: {test_pdf.name}")
-        metadata = extract_metadata_from_pdf(test_pdf)
-        print(f"Extracted metadata: {metadata}")
-        print()
-    
-    index = build_vectordb_with_metadata()
+    print("\n🎉 Complete! Your RAG system now has rich metadata for all papers.")
