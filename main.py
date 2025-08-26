@@ -24,6 +24,7 @@ index = VectorStoreIndex.from_vector_store(
 # Step 4: Load LLM
 llm = Ollama(
     model="gemma:2b", 
+    # model="deepseek-r1:latest", 
     # temperature=0.3, 
     request_timeout=400,
 )
